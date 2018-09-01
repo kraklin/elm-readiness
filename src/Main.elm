@@ -16,6 +16,55 @@ import Set exposing (Set)
 
 
 
+---- DEMO DATA ----
+
+
+demoData : String
+demoData =
+    """{
+    "version": "0.0.1",
+    "summary": "helpful summary of your project, less than 80 characters",
+    "repository": "https://github.com/user/project.git",
+    "license": "BSD3",
+    "source-directories": [
+        "src"
+    ],
+    "exposed-modules": [],
+    "dependencies": {
+        "NoRedInk/elm-compare": "1.1.0 <= v < 2.0.0",
+        "cuducos/elm-format-number": "5.0.3 <= v < 6.0.0",
+        "elm-community/json-extra": "2.1.0 <= v < 3.0.0",
+        "elm-community/list-extra": "5.0.0 <= v < 6.0.0",
+        "elm-community/maybe-extra": "4.0.0 <= v < 5.0.0",
+        "elm-community/parser-combinators": "1.0.0 <= v < 2.0.0",
+        "elm-lang/core": "5.0.0 <= v < 6.0.0",
+        "elm-lang/dom": "1.1.1 <= v < 2.0.0",
+        "elm-lang/html": "2.0.0 <= v < 3.0.0",
+        "elm-lang/http": "1.0.0 <= v < 2.0.0",
+        "elm-lang/keyboard": "1.0.1 <= v < 2.0.0",
+        "elm-lang/mouse": "1.0.1 <= v < 2.0.0",
+        "elm-lang/navigation": "2.0.1 <= v < 3.0.0",
+        "elm-lang/window": "1.0.1 <= v < 2.0.0",
+        "eskimoblood/elm-color-extra": "5.1.0 <= v < 6.0.0",
+        "etaque/elm-form": "3.0.0 <= v < 4.0.0",
+        "evancz/elm-markdown": "3.0.2 <= v < 4.0.0",
+        "evancz/url-parser": "2.0.1 <= v < 3.0.0",
+        "janjelinek/creditcard-validation": "1.0.0 <= v < 2.0.0",
+        "krisajenkins/remotedata": "4.3.3 <= v < 5.0.0",
+        "mdgriffith/elm-color-mixing": "1.1.1 <= v < 2.0.0",
+        "mgold/elm-date-format": "1.6.0 <= v < 2.0.0",
+        "mpizenberg/elm-debounce": "3.0.2 <= v < 4.0.0",
+        "nonpop/elm-purl": "2.1.0 <= v < 3.0.0",
+        "stoeffel/set-extra": "1.2.2 <= v < 2.0.0",
+        "wernerdegroot/listzipper": "3.0.0 <= v < 4.0.0",
+        "zaboco/elm-draggable": "2.0.2 <= v < 2.1.0"
+    },
+    "elm-version": "0.18.0 <= v < 0.19.0"
+}
+"""
+
+
+
 ---- MODEL ----
 
 
@@ -63,6 +112,7 @@ init searchJson =
 type Msg
     = CheckPackages
     | UpdateTextArea String
+    | LoadDemoData
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -70,6 +120,9 @@ update msg model =
     case msg of
         UpdateTextArea content ->
             ( { model | myElmPackageTextArea = content }, Cmd.none )
+
+        LoadDemoData ->
+            ( { model | myElmPackageTextArea = demoData }, Cmd.none )
 
         CheckPackages ->
             let
@@ -82,7 +135,10 @@ update msg model =
                         ( Ok dep, Ok packages ) ->
                             Success <| getResult dep packages
 
-                        _ ->
+                        ( Err err, _ ) ->
+                            Failure <| JsonParsingError err
+
+                        ( _, _ ) ->
                             Failure <| Other "Something went wrong"
             in
             ( { model | result = result }, Cmd.none )
@@ -250,7 +306,17 @@ view model =
             [ Element.el [] <| Element.text "Elm 0.19 readiness checker"
             , Element.wrappedRow [ Element.spacing 40 ] <|
                 Element.column [ Element.alignTop, Element.spacing 20 ]
-                    [ Input.multiline
+                    [ Input.button
+                        [ Element.centerX
+                        , Font.size 11
+                        , Border.width 1
+                        , Element.padding 3
+                        , Border.rounded 4
+                        ]
+                        { onPress = Just LoadDemoData
+                        , label = Element.text "Load demo elm-package.json"
+                        }
+                    , Input.multiline
                         [ Element.width <| Element.px 400
                         , Element.height <| Element.px 500
                         , Font.size 11
