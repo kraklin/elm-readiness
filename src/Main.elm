@@ -176,7 +176,7 @@ viewDependency ( name, status ) =
                     , label =
                         Element.image
                             [ Element.width <| Element.px 16 ]
-                            { src = "/github-icon.png", description = "GitHub" }
+                            { src = "github-icon.png", description = "GitHub" }
                     }
                 , Element.newTabLink []
                     { url = "https://package.elm-lang.org/packages/" ++ packageName
