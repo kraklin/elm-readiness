@@ -20,7 +20,7 @@ import Set exposing (Set)
 
 
 type alias Model =
-    { availablePackages : WebData (List String)
+    { availablePackages : Result Json.Decode.Error (List String)
     , myElmPackageTextArea : String
     , result : RemoteData ReadinessError ReadinessResult
     }
@@ -42,9 +42,13 @@ type alias ReadinessResult =
     Dict String DependencyStatus
 
 
-init : ( Model, Cmd Msg )
-init =
-    ( { availablePackages = NotAsked
+init : String -> ( Model, Cmd Msg )
+init searchJson =
+    let
+        packages =
+            Json.Decode.decodeString packagesDecoder searchJson
+    in
+    ( { availablePackages = packages
       , myElmPackageTextArea = ""
       , result = NotAsked
       }
@@ -57,39 +61,31 @@ init =
 
 
 type Msg
-    = GetPackagesJson
-    | HandleGetPackages (WebData (List String))
+    = CheckPackages
     | UpdateTextArea String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        GetPackagesJson ->
-            ( { model | availablePackages = Loading }
-            , Http.get "/search.json" packagesDecoder
-                |> RemoteData.sendRequest
-                |> Cmd.map HandleGetPackages
-            )
-
         UpdateTextArea content ->
             ( { model | myElmPackageTextArea = content }, Cmd.none )
 
-        HandleGetPackages data ->
+        CheckPackages ->
             let
                 dependencies =
                     Json.Decode.decodeString dependenciesDecoder model.myElmPackageTextArea
                         |> Result.map (List.map Tuple.first)
 
                 result =
-                    case ( dependencies, data ) of
-                        ( Ok dep, Success packages ) ->
+                    case ( dependencies, model.availablePackages ) of
+                        ( Ok dep, Ok packages ) ->
                             Success <| getResult dep packages
 
                         _ ->
                             Failure <| Other "Something went wrong"
             in
-            ( { model | availablePackages = data, result = result }, Cmd.none )
+            ( { model | result = result }, Cmd.none )
 
 
 packagesDecoder =
@@ -176,14 +172,14 @@ viewDependency ( name, status ) =
         links packageName =
             Element.row [ Element.spacing 10, Element.paddingEach { top = 10, left = 0, right = 0, bottom = 0 } ]
                 [ Element.newTabLink []
-                    { url = "https://github.com/" ++ name
+                    { url = "https://github.com/" ++ packageName
                     , label =
                         Element.image
                             [ Element.width <| Element.px 16 ]
                             { src = "/github-icon.png", description = "GitHub" }
                     }
                 , Element.newTabLink []
-                    { url = "https://package.elm-lang.org/packages/" ++ name
+                    { url = "https://package.elm-lang.org/packages/" ++ packageName
                     , label =
                         Element.image [ Element.width <| Element.px 16 ]
                             { src = "elm-lang-icon.png", description = "Elm Package" }
@@ -199,7 +195,7 @@ viewDependency ( name, status ) =
                     ]
 
                 _ ->
-                    [ Element.text name
+                    [ Element.el [ Font.size 14, Font.bold ] <| Element.text name
                     , links name
                     ]
     in
@@ -271,7 +267,7 @@ view model =
                         , Element.padding 10
                         , Border.rounded 4
                         ]
-                        { onPress = Just GetPackagesJson
+                        { onPress = Just CheckPackages
                         , label = Element.text "Check my packages"
                         }
                     ]
@@ -283,11 +279,11 @@ view model =
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+main : Program String Model Msg
 main =
     Browser.element
         { view = view
-        , init = \_ -> init
+        , init = init
         , update = update
         , subscriptions = always Sub.none
         }
