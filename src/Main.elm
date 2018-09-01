@@ -83,7 +83,6 @@ type DependencyStatus
 
 type ReadinessError
     = JsonParsingError Json.Decode.Error
-    | PackagesError Http.Error
     | Other String
 
 
@@ -293,7 +292,12 @@ viewResult readinessResult =
             viewBoth result
 
         Failure error ->
-            [ Element.text "Something went wrong" ]
+            case error of
+                JsonParsingError err ->
+                    [ Element.text <| "Unable to parse pasted elm-package.json. Take a look at it." ]
+
+                Other err ->
+                    [ Element.text <| "Something went wrong:" ++ err ]
 
         _ ->
             [ Element.none ]
