@@ -1,5 +1,7 @@
 # Elm 0.19 readiness helper
 
+Helper can be found on [](https://kraklin.github.io/elm-readiness/)
+
 This small project is meant to help you keep track of transition state of your dependencies in your own Elm app to Elm 0.19.
 
 ## How does it work
