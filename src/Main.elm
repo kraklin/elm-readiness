@@ -14,7 +14,9 @@ import Json.Decode
 import RemoteData exposing (RemoteData(..), WebData)
 import RemoteData.Http
 import Set exposing (Set)
+import Task
 import Url exposing (Url)
+import Url.Builder as Url
 
 
 
@@ -75,6 +77,7 @@ type alias Model =
     , elmPackageInput : String
     , result : RemoteData ReadinessError ReadinessResult
     , currentPage : Page
+    , navigationKey : Navigation.Key
     }
 
 
@@ -86,6 +89,7 @@ type DependencyStatus
 
 type ReadinessError
     = JsonParsingError Json.Decode.Error
+    | GitHubRepoError String
     | Other String
 
 
@@ -111,7 +115,7 @@ packageRequest package =
         requestUrl =
             "https://raw.githubusercontent.com/" ++ package ++ "/master/elm-package.json"
     in
-    Http.send GetPackageFromGitHub <| Http.getString requestUrl
+    Http.send (GetPackageFromGitHub package) <| Http.getString requestUrl
 
 
 init : String -> Url -> Navigation.Key -> ( Model, Cmd Msg )
@@ -129,6 +133,7 @@ init searchJson url key =
       , elmPackageInput = ""
       , result = NotAsked
       , currentPage = urlToPage url
+      , navigationKey = key
       }
     , command
     )
@@ -144,7 +149,9 @@ type Msg
     | LoadDemoData
     | UrlChanged Url
     | UrlRequested Browser.UrlRequest
-    | GetPackageFromGitHub (Result Http.Error String)
+    | GetPackageFromGitHub String (Result Http.Error String)
+    | GoToPackageDetail String
+    | GoToHomepage
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -173,21 +180,51 @@ update msg model =
                         ( _, _ ) ->
                             Failure <| Other "Something went wrong"
             in
+            if String.isEmpty model.elmPackageInput then
+                ( model, Cmd.none )
+
+            else
+                ( { model | result = result }, Cmd.none )
+
+        GetPackageFromGitHub repo package ->
+            let
+                dependencies =
+                    case package of
+                        Ok packageContent ->
+                            Json.Decode.decodeString dependenciesDecoder packageContent
+                                |> Result.map (List.map Tuple.first)
+                                |> Result.mapError (\err -> JsonParsingError err)
+
+                        Err httpErr ->
+                            Err <| GitHubRepoError repo
+
+                -- |> Result.andThen (List.map Tuple.first)
+                result =
+                    case ( dependencies, model.availablePackages ) of
+                        ( Ok dep, Ok packages ) ->
+                            Success <| getResult dep packages
+
+                        ( Err err, _ ) ->
+                            Failure err
+
+                        ( _, _ ) ->
+                            Failure <| Other "Something went wrong"
+            in
             ( { model | result = result }, Cmd.none )
 
-        GetPackageFromGitHub package ->
-            let
-                _ =
-                    Debug.log "Package" package
-            in
-            ( model, Cmd.none )
-
         UrlRequested request ->
-            let
-                _ =
-                    Debug.log "URL requested" request
-            in
-            ( model, Cmd.none )
+            case request of
+                Browser.External url ->
+                    ( model, Navigation.load url )
+
+                Browser.Internal url ->
+                    ( model, Navigation.pushUrl model.navigationKey <| Url.toString url )
+
+        GoToPackageDetail package ->
+            ( model, Navigation.pushUrl model.navigationKey <| Url.custom Url.Relative [] [] <| Just package )
+
+        GoToHomepage ->
+            ( model, Navigation.pushUrl model.navigationKey <| Url.relative [ "/" ] [] )
 
         UrlChanged url ->
             let
@@ -196,10 +233,12 @@ update msg model =
             in
             case url.fragment of
                 Just fragment ->
-                    ( { model | currentPage = urlToPage url }, Http.send GetPackageFromGitHub <| Http.getString <| requestUrl fragment )
+                    ( { model | currentPage = urlToPage url, result = NotAsked }, Http.send (GetPackageFromGitHub fragment) <| Http.getString <| requestUrl fragment )
 
                 Nothing ->
-                    ( { model | currentPage = urlToPage url }, Cmd.none )
+                    ( { model | currentPage = urlToPage url, result = NotAsked }
+                    , Task.perform identity <| Task.succeed CheckPackages
+                    )
 
 
 packagesDecoder : Json.Decode.Decoder (List String)
@@ -242,6 +281,7 @@ replacedPackages =
         , ( "elm-lang/mouse", "elm/browser" )
         , ( "avh4/elm-transducers", "avh4-experimental/elm-transducers" )
         , ( "dillonkearns/graphqelm", "dillonkearns/elm-graphql" )
+        , ( "mgold/elm-date-format", "ryannhg/date-format" )
         ]
 
 
@@ -310,8 +350,13 @@ viewDependency ( name, status ) =
                     , links replacedName
                     ]
 
-                _ ->
+                Ready ->
                     [ Element.el [ Font.size 14, Font.bold ] <| Element.text name
+                    , links name
+                    ]
+
+                NotReady ->
+                    [ Input.button [ Font.size 14, Font.bold, Font.underline ] { onPress = Just <| GoToPackageDetail name, label = Element.text name }
                     , links name
                     ]
     in
@@ -331,18 +376,22 @@ viewResult readinessResult =
             Dict.partition (\k v -> v /= NotReady) result
 
         dictView header result =
-            Element.column
-                [ Font.size 12
-                , Element.spacing 20
-                , Element.alignTop
-                , Element.padding 10
-                ]
-                [ Element.text <| header ++ ": " ++ (String.fromInt <| Dict.size result)
-                , Element.column [ Element.spacing 5 ] <|
-                    (Dict.toList result
-                        |> List.map viewDependency
-                    )
-                ]
+            if Dict.isEmpty result then
+                Element.none
+
+            else
+                Element.column
+                    [ Font.size 12
+                    , Element.spacing 20
+                    , Element.alignTop
+                    , Element.padding 10
+                    ]
+                    [ Element.text <| header ++ ": " ++ (String.fromInt <| Dict.size result)
+                    , Element.column [ Element.spacing 5 ] <|
+                        (Dict.toList result
+                            |> List.map viewDependency
+                        )
+                    ]
 
         viewBoth result =
             partitionResult result
@@ -353,17 +402,26 @@ viewResult readinessResult =
             viewBoth result
 
         Failure error ->
-            case error of
-                JsonParsingError err ->
-                    [ Element.text <| "Unable to parse pasted elm-package.json. Take a look at it." ]
+            [ Element.paragraph [ Font.size 12, Font.color <| Element.rgb 1 0 0 ] <|
+                case error of
+                    JsonParsingError err ->
+                        [ Element.text <| "Unable to parse pasted elm-package.json. Take a look at it." ]
 
-                Other err ->
-                    [ Element.text <| "Something went wrong:" ++ err ]
+                    GitHubRepoError repo ->
+                        [ Element.text "Problem with downloading stuff from GitHub. Check if the repository "
+                        , Element.link [ Font.underline ] { url = "https://github.com/" ++ repo, label = Element.text repo }
+                        , Element.text " exists and that it has `elm-package.json` in the root of the repository."
+                        ]
+
+                    Other err ->
+                        [ Element.text <| "Something went wrong: " ++ err ]
+            ]
 
         _ ->
             [ Element.none ]
 
 
+viewHomepage : Model -> List (Element Msg)
 viewHomepage model =
     [ Element.wrappedRow [ Element.spacing 40 ] <|
         Element.column [ Element.alignTop, Element.spacing 20 ]
@@ -402,9 +460,19 @@ viewHomepage model =
     ]
 
 
+viewPackagePage : Model -> String -> List (Element Msg)
 viewPackagePage model package =
-    [ Element.column [ Element.alignTop, Element.spacing 20 ]
-        [ Element.text package ]
+    [ Element.column [ Element.alignTop, Element.spacing 20 ] <|
+        [ Input.button
+            [ Font.size 11
+            , Border.width 1
+            , Element.padding 7
+            , Border.rounded 4
+            ]
+            { onPress = Just GoToHomepage, label = Element.text "< Go back to homepage" }
+        , Element.el [ Font.bold, Font.size 18 ] <| Element.text package
+        , Element.wrappedRow [] <| viewResult model.result
+        ]
     ]
 
 
