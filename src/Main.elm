@@ -1,6 +1,7 @@
 module Main exposing (Model, Msg(..), init, main, update, view)
 
 import Browser
+import Browser.Navigation as Navigation
 import Dict exposing (Dict)
 import Element exposing (Element)
 import Element.Background as Background
@@ -13,6 +14,7 @@ import Json.Decode
 import RemoteData exposing (RemoteData(..), WebData)
 import RemoteData.Http
 import Set exposing (Set)
+import Url exposing (Url)
 
 
 
@@ -70,8 +72,9 @@ demoData =
 
 type alias Model =
     { availablePackages : Result Json.Decode.Error (List String)
-    , myElmPackageTextArea : String
+    , elmPackageInput : String
     , result : RemoteData ReadinessError ReadinessResult
+    , currentPage : Page
     }
 
 
@@ -90,17 +93,44 @@ type alias ReadinessResult =
     Dict String DependencyStatus
 
 
-init : String -> ( Model, Cmd Msg )
-init searchJson =
+type Page
+    = HomePage
+    | PackagePage String
+
+
+urlToPage : Url -> Page
+urlToPage url =
+    url.fragment
+        |> Maybe.map PackagePage
+        |> Maybe.withDefault HomePage
+
+
+packageRequest : String -> Cmd Msg
+packageRequest package =
+    let
+        requestUrl =
+            "https://raw.githubusercontent.com/" ++ package ++ "/master/elm-package.json"
+    in
+    Http.send GetPackageFromGitHub <| Http.getString requestUrl
+
+
+init : String -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init searchJson url key =
     let
         packages =
             Json.Decode.decodeString packagesDecoder searchJson
+
+        command =
+            url.fragment
+                |> Maybe.map packageRequest
+                |> Maybe.withDefault Cmd.none
     in
     ( { availablePackages = packages
-      , myElmPackageTextArea = ""
+      , elmPackageInput = ""
       , result = NotAsked
+      , currentPage = urlToPage url
       }
-    , Cmd.none
+    , command
     )
 
 
@@ -112,21 +142,24 @@ type Msg
     = CheckPackages
     | UpdateTextArea String
     | LoadDemoData
+    | UrlChanged Url
+    | UrlRequested Browser.UrlRequest
+    | GetPackageFromGitHub (Result Http.Error String)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         UpdateTextArea content ->
-            ( { model | myElmPackageTextArea = content }, Cmd.none )
+            ( { model | elmPackageInput = content }, Cmd.none )
 
         LoadDemoData ->
-            ( { model | myElmPackageTextArea = demoData }, Cmd.none )
+            ( { model | elmPackageInput = demoData }, Cmd.none )
 
         CheckPackages ->
             let
                 dependencies =
-                    Json.Decode.decodeString dependenciesDecoder model.myElmPackageTextArea
+                    Json.Decode.decodeString dependenciesDecoder model.elmPackageInput
                         |> Result.map (List.map Tuple.first)
 
                 result =
@@ -141,6 +174,32 @@ update msg model =
                             Failure <| Other "Something went wrong"
             in
             ( { model | result = result }, Cmd.none )
+
+        GetPackageFromGitHub package ->
+            let
+                _ =
+                    Debug.log "Package" package
+            in
+            ( model, Cmd.none )
+
+        UrlRequested request ->
+            let
+                _ =
+                    Debug.log "URL requested" request
+            in
+            ( model, Cmd.none )
+
+        UrlChanged url ->
+            let
+                requestUrl fragment =
+                    "https://raw.githubusercontent.com/" ++ fragment ++ "/master/elm-package.json"
+            in
+            case url.fragment of
+                Just fragment ->
+                    ( { model | currentPage = urlToPage url }, Http.send GetPackageFromGitHub <| Http.getString <| requestUrl fragment )
+
+                Nothing ->
+                    ( { model | currentPage = urlToPage url }, Cmd.none )
 
 
 packagesDecoder =
@@ -303,46 +362,67 @@ viewResult readinessResult =
             [ Element.none ]
 
 
-view : Model -> Html Msg
-view model =
-    Element.layout [] <|
-        Element.column [ Element.padding 10, Element.spacing 10 ]
-            [ Element.el [] <| Element.text "Elm 0.19 readiness checker"
-            , Element.wrappedRow [ Element.spacing 40 ] <|
-                Element.column [ Element.alignTop, Element.spacing 20 ]
-                    [ Input.button
-                        [ Element.centerX
-                        , Font.size 11
-                        , Border.width 1
-                        , Element.padding 3
-                        , Border.rounded 4
-                        ]
-                        { onPress = Just LoadDemoData
-                        , label = Element.text "Load demo elm-package.json"
-                        }
-                    , Input.multiline
-                        [ Element.width <| Element.px 400
-                        , Element.height <| Element.px 500
-                        , Font.size 11
-                        ]
-                        { onChange = UpdateTextArea
-                        , text = model.myElmPackageTextArea
-                        , label = Input.labelAbove [ Font.size 14 ] <| Element.text "Paste content of your elm-package.json here"
-                        , placeholder = Nothing
-                        , spellcheck = False
-                        }
-                    , Input.button
-                        [ Element.centerX
-                        , Border.width 1
-                        , Element.padding 10
-                        , Border.rounded 4
-                        ]
-                        { onPress = Just CheckPackages
-                        , label = Element.text "Check my packages"
-                        }
-                    ]
-                    :: viewResult model.result
+viewHomepage model =
+    [ Element.wrappedRow [ Element.spacing 40 ] <|
+        Element.column [ Element.alignTop, Element.spacing 20 ]
+            [ Input.button
+                [ Element.centerX
+                , Font.size 11
+                , Border.width 1
+                , Element.padding 3
+                , Border.rounded 4
+                ]
+                { onPress = Just LoadDemoData
+                , label = Element.text "Load demo elm-package.json"
+                }
+            , Input.multiline
+                [ Element.width <| Element.px 400
+                , Element.height <| Element.px 300
+                , Font.size 11
+                ]
+                { onChange = UpdateTextArea
+                , text = model.elmPackageInput
+                , label = Input.labelAbove [ Font.size 14 ] <| Element.text "Paste content of your elm-package.json here"
+                , placeholder = Nothing
+                , spellcheck = False
+                }
+            , Input.button
+                [ Element.centerX
+                , Border.width 1
+                , Element.padding 10
+                , Border.rounded 4
+                ]
+                { onPress = Just CheckPackages
+                , label = Element.text "Check my dependencies"
+                }
             ]
+            :: viewResult model.result
+    ]
+
+
+viewPackagePage model package =
+    [ Element.column [ Element.alignTop, Element.spacing 20 ]
+        [ Element.text package ]
+    ]
+
+
+view : Model -> Browser.Document Msg
+view model =
+    { title = "Elm 0.19 Readiness helper"
+    , body =
+        [ Element.layout [] <|
+            Element.column [ Element.padding 10, Element.spacing 10 ] <|
+                ([ Element.el [] <| Element.text "Elm 0.19 readiness checker" ]
+                    ++ (case model.currentPage of
+                            HomePage ->
+                                viewHomepage model
+
+                            PackagePage package ->
+                                viewPackagePage model package
+                       )
+                )
+        ]
+    }
 
 
 
@@ -351,9 +431,11 @@ view model =
 
 main : Program String Model Msg
 main =
-    Browser.element
+    Browser.application
         { view = view
         , init = init
         , update = update
         , subscriptions = always Sub.none
+        , onUrlChange = UrlChanged
+        , onUrlRequest = UrlRequested
         }

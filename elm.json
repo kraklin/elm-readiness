@@ -11,17 +11,16 @@
             "elm/html": "1.0.0",
             "elm/http": "1.0.0",
             "elm/json": "1.0.0",
+            "elm/url": "1.0.0",
             "krisajenkins/remotedata": "5.0.0",
             "mdgriffith/elm-ui": "1.0.0",
             "ohanhi/remotedata-http": "3.0.0"
         },
         "indirect": {
             "elm/time": "1.0.0",
-            "elm/url": "1.0.0",
             "elm/virtual-dom": "1.0.0"
         }
     },
-    "homepage": "https://kraklin.github.io/elm-readiness",
     "test-dependencies": {
         "direct": {
             "elm-explorations/test": "1.0.0"
