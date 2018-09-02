@@ -6,4 +6,3 @@ Elm.Main.init({
   node: document.getElementById('root'), 
   flags: JSON.stringify(searchJson)
 });
-

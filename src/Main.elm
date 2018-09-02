@@ -202,10 +202,12 @@ update msg model =
                     ( { model | currentPage = urlToPage url }, Cmd.none )
 
 
+packagesDecoder : Json.Decode.Decoder (List String)
 packagesDecoder =
     Json.Decode.list <| Json.Decode.field "name" Json.Decode.string
 
 
+dependenciesDecoder : Json.Decode.Decoder (List ( String, String ))
 dependenciesDecoder =
     Json.Decode.field "dependencies" (Json.Decode.keyValuePairs Json.Decode.string)
 
