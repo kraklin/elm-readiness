@@ -105,7 +105,14 @@ type Page
 urlToPage : Url -> Page
 urlToPage url =
     url.fragment
-        |> Maybe.map PackagePage
+        |> Maybe.map
+            (\f ->
+                if String.isEmpty f then
+                    HomePage
+
+                else
+                    PackagePage f
+            )
         |> Maybe.withDefault HomePage
 
 
@@ -150,8 +157,6 @@ type Msg
     | UrlChanged Url
     | UrlRequested Browser.UrlRequest
     | GetPackageFromGitHub String (Result Http.Error String)
-    | GoToPackageDetail String
-    | GoToHomepage
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -220,20 +225,24 @@ update msg model =
                 Browser.Internal url ->
                     ( model, Navigation.pushUrl model.navigationKey <| Url.toString url )
 
-        GoToPackageDetail package ->
-            ( model, Navigation.pushUrl model.navigationKey <| Url.custom Url.Relative [] [] <| Just package )
-
-        GoToHomepage ->
-            ( model, Navigation.pushUrl model.navigationKey <| Url.relative [ "/" ] [] )
-
         UrlChanged url ->
             let
-                requestUrl fragment =
-                    "https://raw.githubusercontent.com/" ++ fragment ++ "/master/elm-package.json"
+                nonEmptyFragment =
+                    Maybe.andThen
+                        (\frag ->
+                            if String.isEmpty frag then
+                                Nothing
+
+                            else
+                                Just frag
+                        )
+                        url.fragment
             in
-            case url.fragment of
+            case nonEmptyFragment of
                 Just fragment ->
-                    ( { model | currentPage = urlToPage url, result = NotAsked }, Http.send (GetPackageFromGitHub fragment) <| Http.getString <| requestUrl fragment )
+                    ( { model | currentPage = urlToPage url, result = NotAsked }
+                    , packageRequest fragment
+                    )
 
                 Nothing ->
                     ( { model | currentPage = urlToPage url, result = NotAsked }
@@ -356,7 +365,7 @@ viewDependency ( name, status ) =
                     ]
 
                 NotReady ->
-                    [ Input.button [ Font.size 14, Font.bold, Font.underline ] { onPress = Just <| GoToPackageDetail name, label = Element.text name }
+                    [ Element.link [ Font.size 14, Font.bold, Font.underline ] { url = "#" ++ name, label = Element.text name }
                     , links name
                     ]
     in
@@ -463,13 +472,13 @@ viewHomepage model =
 viewPackagePage : Model -> String -> List (Element Msg)
 viewPackagePage model package =
     [ Element.column [ Element.alignTop, Element.spacing 20 ] <|
-        [ Input.button
+        [ Element.link
             [ Font.size 11
             , Border.width 1
             , Element.padding 7
             , Border.rounded 4
             ]
-            { onPress = Just GoToHomepage, label = Element.text "< Go back to homepage" }
+            { url = "#", label = Element.text "< Go back to homepage" }
         , Element.el [ Font.bold, Font.size 18 ] <| Element.text package
         , Element.wrappedRow [] <| viewResult model.result
         ]
