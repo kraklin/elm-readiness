@@ -451,8 +451,8 @@ viewHomepage model =
                 ]
                 { onChange = UpdateTextArea
                 , text = model.elmPackageInput
-                , label = Input.labelAbove [ Font.size 14 ] <| Element.text "Paste content of your elm-package.json here"
-                , placeholder = Nothing
+                , label = Input.labelAbove [ Font.size 12 ] <| Element.text "Your elm-package.json"
+                , placeholder = Just <| Input.placeholder [ Font.size 14 ] <| Element.text "Paste content of your elm-package.json here"
                 , spellcheck = False
                 }
             , Input.button
@@ -485,13 +485,25 @@ viewPackagePage model package =
     ]
 
 
+viewGithubLink : Element Msg
+viewGithubLink =
+    Element.row [ Element.spacing 4, Font.size 14 ]
+        [ Element.image
+            [ Element.width <| Element.px 16 ]
+            { src = "github-icon.png", description = "GitHub" }
+        , Element.link [ Font.underline ] { url = "https://github.com/kraklin/elm-readiness/", label = Element.text "Source code" }
+        ]
+
+
 view : Model -> Browser.Document Msg
 view model =
     { title = "Elm 0.19 Readiness helper"
     , body =
         [ Element.layout [] <|
             Element.column [ Element.padding 10, Element.spacing 10 ] <|
-                ([ Element.el [] <| Element.text "Elm 0.19 readiness checker" ]
+                ([ Element.el [ Font.bold, Font.size 24 ] <| Element.text "Elm 0.19 readiness checker"
+                 , viewGithubLink
+                 ]
                     ++ (case model.currentPage of
                             HomePage ->
                                 viewHomepage model
