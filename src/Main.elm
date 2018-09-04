@@ -73,7 +73,7 @@ demoData =
 
 
 type alias Model =
-    { availablePackages : Result Json.Decode.Error (List String)
+    { availablePackages : WebData (List String)
     , elmPackageInput : String
     , result : RemoteData ReadinessError ReadinessResult
     , currentPage : Page
@@ -89,6 +89,7 @@ type DependencyStatus
 
 type ReadinessError
     = JsonParsingError Json.Decode.Error
+    | SearchJsonFailure String
     | GitHubRepoError String
     | Other String
 
@@ -125,24 +126,26 @@ packageRequest package =
     Http.send (GetPackageFromGitHub package) <| Http.getString requestUrl
 
 
-init : String -> Url -> Navigation.Key -> ( Model, Cmd Msg )
-init searchJson url key =
-    let
-        packages =
-            Json.Decode.decodeString packagesDecoder searchJson
+searchJsonRequest : Cmd Msg
+searchJsonRequest =
+    RemoteData.Http.get "https://cors-anywhere.herokuapp.com/https://package.elm-lang.org/search.json" HandleElmPackages packagesDecoder
 
+
+init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init _ url key =
+    let
         command =
             url.fragment
                 |> Maybe.map packageRequest
                 |> Maybe.withDefault Cmd.none
     in
-    ( { availablePackages = packages
+    ( { availablePackages = Loading
       , elmPackageInput = ""
       , result = NotAsked
       , currentPage = urlToPage url
       , navigationKey = key
       }
-    , command
+    , Cmd.batch [ searchJsonRequest, command ]
     )
 
 
@@ -152,6 +155,7 @@ init searchJson url key =
 
 type Msg
     = CheckPackages
+    | HandleElmPackages (WebData (List String))
     | UpdateTextArea String
     | LoadDemoData
     | UrlChanged Url
@@ -168,6 +172,9 @@ update msg model =
         LoadDemoData ->
             ( { model | elmPackageInput = demoData }, Cmd.none )
 
+        HandleElmPackages data ->
+            ( { model | availablePackages = data }, Cmd.none )
+
         CheckPackages ->
             let
                 dependencies =
@@ -176,7 +183,7 @@ update msg model =
 
                 result =
                     case ( dependencies, model.availablePackages ) of
-                        ( Ok dep, Ok packages ) ->
+                        ( Ok dep, Success packages ) ->
                             Success <| getResult dep packages
 
                         ( Err err, _ ) ->
@@ -203,11 +210,13 @@ update msg model =
                         Err httpErr ->
                             Err <| GitHubRepoError repo
 
-                -- |> Result.andThen (List.map Tuple.first)
                 result =
                     case ( dependencies, model.availablePackages ) of
-                        ( Ok dep, Ok packages ) ->
+                        ( Ok dep, Success packages ) ->
                             Success <| getResult dep packages
+
+                        ( _, Failure reason ) ->
+                            Failure <| SearchJsonFailure "Probelm with getting search.json"
 
                         ( Err err, _ ) ->
                             Failure err
@@ -422,6 +431,9 @@ viewResult readinessResult =
                         , Element.text " exists and that it has `elm-package.json` in the root of the repository."
                         ]
 
+                    SearchJsonFailure reason ->
+                        [ Element.text <| "Cannot get search.json from packages.elm-lang.org: " ++ reason ]
+
                     Other err ->
                         [ Element.text <| "Something went wrong: " ++ err ]
             ]
@@ -432,6 +444,29 @@ viewResult readinessResult =
 
 viewHomepage : Model -> List (Element Msg)
 viewHomepage model =
+    let
+        button =
+            case model.availablePackages of
+                Success _ ->
+                    Input.button
+                        [ Element.centerX
+                        , Border.width 1
+                        , Element.padding 10
+                        , Border.rounded 4
+                        ]
+                        { onPress = Just CheckPackages
+                        , label = Element.text "Check my dependencies"
+                        }
+
+                Loading ->
+                    Element.text "Loading packages..."
+
+                Failure reason ->
+                    Element.text "Unable to load packages from packages.elm-lang.org"
+
+                NotAsked ->
+                    Element.none
+    in
     [ Element.wrappedRow [ Element.spacing 40 ] <|
         Element.column [ Element.alignTop, Element.spacing 20 ]
             [ Input.button
@@ -455,15 +490,7 @@ viewHomepage model =
                 , placeholder = Just <| Input.placeholder [ Font.size 14 ] <| Element.text "Paste content of your elm-package.json here"
                 , spellcheck = False
                 }
-            , Input.button
-                [ Element.centerX
-                , Border.width 1
-                , Element.padding 10
-                , Border.rounded 4
-                ]
-                { onPress = Just CheckPackages
-                , label = Element.text "Check my dependencies"
-                }
+            , button
             ]
             :: viewResult model.result
     ]
@@ -520,7 +547,6 @@ view model =
 ---- PROGRAM ----
 
 
-main : Program String Model Msg
 main =
     Browser.application
         { view = view
