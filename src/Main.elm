@@ -133,19 +133,13 @@ searchJsonRequest =
 
 init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
 init _ url key =
-    let
-        command =
-            url.fragment
-                |> Maybe.map packageRequest
-                |> Maybe.withDefault Cmd.none
-    in
     ( { availablePackages = Loading
       , elmPackageInput = ""
       , result = NotAsked
       , currentPage = urlToPage url
       , navigationKey = key
       }
-    , Cmd.batch [ searchJsonRequest, command ]
+    , searchJsonRequest
     )
 
 
@@ -173,7 +167,16 @@ update msg model =
             ( { model | elmPackageInput = demoData }, Cmd.none )
 
         HandleElmPackages data ->
-            ( { model | availablePackages = data }, Cmd.none )
+            let
+                nextCommand =
+                    case model.currentPage of
+                        PackagePage package ->
+                            packageRequest package
+
+                        HomePage ->
+                            Cmd.none
+            in
+            ( { model | availablePackages = data }, nextCommand )
 
         CheckPackages ->
             let
@@ -498,6 +501,15 @@ viewHomepage model =
 
 viewPackagePage : Model -> String -> List (Element Msg)
 viewPackagePage model package =
+    let
+        packages =
+            case model.availablePackages of
+                Loading ->
+                    Element.text "Loading packages..."
+
+                _ ->
+                    Element.wrappedRow [] <| viewResult model.result
+    in
     [ Element.column [ Element.alignTop, Element.spacing 20 ] <|
         [ Element.link
             [ Font.size 11
@@ -507,7 +519,7 @@ viewPackagePage model package =
             ]
             { url = "#", label = Element.text "< Go back to homepage" }
         , Element.el [ Font.bold, Font.size 18 ] <| Element.text package
-        , Element.wrappedRow [] <| viewResult model.result
+        , packages
         ]
     ]
 
