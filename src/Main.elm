@@ -501,7 +501,7 @@ view model =
     , body =
         [ Element.layout [] <|
             Element.column [ Element.padding 10, Element.spacing 10 ] <|
-                ([ Element.el [ Font.bold, Font.size 24 ] <| Element.text "Elm 0.19 readiness checker"
+                ([ Element.el [ Font.bold, Font.size 24 ] <| Element.text "Elm 0.19 readiness helper"
                  , viewGithubLink
                  ]
                     ++ (case model.currentPage of
