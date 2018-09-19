@@ -303,6 +303,7 @@ replacedPackages =
         , ( "avh4/elm-transducers", "avh4-experimental/elm-transducers" )
         , ( "dillonkearns/graphqelm", "dillonkearns/elm-graphql" )
         , ( "mgold/elm-date-format", "ryannhg/date-format" )
+        , ( "justinmimbs/elm-date-extra", "justinmimbs/date" )
         ]
 
 
