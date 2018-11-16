@@ -13,6 +13,7 @@ import Http
 import Json.Decode
 import RemoteData exposing (RemoteData(..), WebData)
 import RemoteData.Http
+import ReplacedPackages exposing (replacedPackages)
 import Set exposing (Set)
 import Task
 import Url exposing (Url)
@@ -273,41 +274,6 @@ dependenciesDecoder =
     Json.Decode.field "dependencies" (Json.Decode.keyValuePairs Json.Decode.string)
 
 
-replacedPackages : Dict String (List String)
-replacedPackages =
-    Dict.fromList
-        [ ( "NoRedInk/elm-decode-pipeline", [ "NoRedInk/elm-json-decode-pipeline" ] )
-        , ( "elm-community/elm-test", [ "elm-explorations/test" ] )
-        , ( "elm-lang/animation-frame", [ "elm/browser" ] )
-        , ( "elm-lang/core", [ "elm/core" ] )
-        , ( "elm-lang/html", [ "elm/html" ] )
-        , ( "elm-lang/http", [ "elm/http" ] )
-        , ( "elm-lang/svg", [ "elm/svg" ] )
-        , ( "elm-lang/virtual-dom", [ "elm/virtual-dom" ] )
-        , ( "elm-tools/parser", [ "elm/parser" ] )
-        , ( "evancz/elm-markdown", [ "elm-explorations/markdown" ] )
-        , ( "evancz/url-parser", [ "elm/url" ] )
-        , ( "mgold/elm-random-pcg", [ "elm/random" ] )
-        , ( "ohanhi/keyboard-extra", [ "ohanhi/keyboard" ] )
-        , ( "thebritican/elm-autocomplete", [ "ContaSystemer/elm-menu" ] )
-        , ( "elm-community/linear-algebra", [ "elm-explorations/linear-algebra" ] )
-        , ( "elm-community/webgl", [ "elm-explorations/webgl" ] )
-        , ( "elm-lang/keyboard", [ "elm/browser" ] )
-        , ( "elm-lang/dom", [ "elm/browser" ] )
-        , ( "elm-lang/navigation", [ "elm/browser" ] )
-        , ( "elm-lang/window", [ "elm/browser" ] )
-        , ( "mpizenberg/elm-mouse-events", [ "mpizenberg/elm-pointer-events" ] )
-        , ( "mpizenberg/elm-touch-events", [ "mpizenberg/elm-pointer-events" ] )
-        , ( "ryannhg/elm-date-format", [ "ryannhg/date-format" ] )
-        , ( "rtfeldman/hex", [ "rtfeldman/elm-hex" ] )
-        , ( "elm-lang/mouse", [ "elm/browser" ] )
-        , ( "avh4/elm-transducers", [ "avh4-experimental/elm-transducers" ] )
-        , ( "dillonkearns/graphqelm", [ "dillonkearns/elm-graphql" ] )
-        , ( "mgold/elm-date-format", [ "ryannhg/date-format" ] )
-        , ( "justinmimbs/elm-date-extra", [ "justinmimbs/date", "rtfeldman/elm-iso8601-date-strings", "ryannhg/date-format" ] )
-        ]
-
-
 getResult : List String -> List String -> ReadinessResult
 getResult myDependencies packages =
     let
@@ -328,25 +294,38 @@ getResult myDependencies packages =
 ---- VIEW ----
 
 
+readyColor : Element.Color
+readyColor =
+    Element.rgb255 177 234 53
+
+
+replacedColor : Element.Color
+replacedColor =
+    Element.rgb255 234 201 53
+
+
+notReadyColor : Element.Color
+notReadyColor =
+    Element.rgb255 234 111 53
+
+
+statusMarker color =
+    Element.el [ Background.color color, Element.width <| Element.px 5, Element.height Element.fill ] <| Element.text " "
+
+
 viewDependency : ( String, DependencyStatus ) -> Element Msg
 viewDependency ( name, status ) =
     let
-        readyColor =
-            Element.rgb 0 1 0
-
-        notReadyColor =
-            Element.rgb 1 0 0
-
         statusColor =
             case status of
-                NotReady ->
-                    notReadyColor
-
-                _ ->
+                Ready ->
                     readyColor
 
-        statusMarker =
-            Element.el [ Background.color statusColor, Element.width <| Element.px 5, Element.height Element.fill ] <| Element.text " "
+                ReplacedWith _ ->
+                    replacedColor
+
+                NotReady ->
+                    notReadyColor
 
         links packageName =
             Element.row [ Element.spacing 10, Element.paddingEach { top = 10, left = 0, right = 0, bottom = 0 } ]
@@ -373,6 +352,9 @@ viewDependency ( name, status ) =
 
         dependency =
             case status of
+                Ready ->
+                    [ dependencyItem name ]
+
                 ReplacedWith replacedNames ->
                     [ Element.el [ Font.size 10, Font.color <| Element.rgb 0.5 0.5 0.5 ] <| Element.text <| "(" ++ name ++ ")"
                     , Element.column [ Element.spacing 5 ]
@@ -380,9 +362,6 @@ viewDependency ( name, status ) =
                             |> List.intersperse (Element.el [] (Element.text "or"))
                         )
                     ]
-
-                Ready ->
-                    [ dependencyItem name ]
 
                 NotReady ->
                     [ Element.link [ Font.size 14, Font.bold, Font.underline ] { url = "#" ++ name, label = Element.text name }
@@ -393,7 +372,7 @@ viewDependency ( name, status ) =
         [ Border.width 1
         , Element.width <| Element.px 300
         ]
-        [ statusMarker
+        [ statusMarker statusColor
         , Element.column [ Element.padding 10 ] dependency
         ]
 
@@ -416,7 +395,7 @@ viewResult readinessResult =
                     , Element.padding 10
                     ]
                     [ Element.text <| header ++ ": " ++ (String.fromInt <| Dict.size result)
-                    , Element.column [ Element.spacing 5 ] <|
+                    , Element.column [ Element.spacing 4 ] <|
                         (Dict.toList result
                             |> List.map viewDependency
                         )
@@ -424,11 +403,30 @@ viewResult readinessResult =
 
         viewBoth result =
             partitionResult result
-                |> (\( ready, notReady ) -> [ dictView "Packages that are not ready yet" notReady, dictView "Packages already on Elm 0.19" ready ])
+                |> (\( ready, notReady ) -> [ dictView "Packages that are not ready yet" notReady, dictView "Packages already on Elm 0.19 or replaced" ready ])
     in
     case readinessResult of
         Success result ->
-            viewBoth result
+            [ Element.column [ Element.spacing 4 ] <|
+                [ Element.el [ Font.bold ] (Element.text "Results")
+                , Element.el [ Font.bold, Font.size 12 ] (Element.text "Legend: ")
+                , Element.column [ Element.spacing 4, Font.size 12, Element.paddingXY 0 4 ]
+                    [ Element.row [ Element.spacing 4 ]
+                        [ statusMarker notReadyColor
+                        , Element.text "Package is not 0.19 ready"
+                        ]
+                    , Element.row [ Element.spacing 4 ]
+                        [ statusMarker replacedColor
+                        , Element.text "Package was replaced with given packages. Possible API change."
+                        ]
+                    , Element.row [ Element.spacing 4 ]
+                        [ statusMarker readyColor
+                        , Element.text "Package is 0.19 ready"
+                        ]
+                    ]
+                , Element.row [] <| viewBoth result
+                ]
+            ]
 
         Failure error ->
             [ Element.paragraph [ Font.size 12, Font.color <| Element.rgb 1 0 0 ] <|
