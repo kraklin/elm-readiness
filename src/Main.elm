@@ -54,6 +54,7 @@ demoData =
         "evancz/elm-markdown": "3.0.2 <= v < 4.0.0",
         "evancz/url-parser": "2.0.1 <= v < 3.0.0",
         "janjelinek/creditcard-validation": "1.0.0 <= v < 2.0.0",
+        "justinmimbs/elm-date-extra": "3.0.0 <= v < 4.0.0",
         "krisajenkins/remotedata": "4.3.3 <= v < 5.0.0",
         "mdgriffith/elm-color-mixing": "1.1.1 <= v < 2.0.0",
         "mgold/elm-date-format": "1.6.0 <= v < 2.0.0",
@@ -83,7 +84,7 @@ type alias Model =
 
 type DependencyStatus
     = Ready
-    | ReplacedWith String
+    | ReplacedWith (List String)
     | NotReady
 
 
@@ -272,38 +273,38 @@ dependenciesDecoder =
     Json.Decode.field "dependencies" (Json.Decode.keyValuePairs Json.Decode.string)
 
 
-replacedPackages : Dict String String
+replacedPackages : Dict String (List String)
 replacedPackages =
     Dict.fromList
-        [ ( "NoRedInk/elm-decode-pipeline", "NoRedInk/elm-json-decode-pipeline" )
-        , ( "elm-community/elm-test", "elm-explorations/test" )
-        , ( "elm-lang/animation-frame", "elm/browser" )
-        , ( "elm-lang/core", "elm/core" )
-        , ( "elm-lang/html", "elm/html" )
-        , ( "elm-lang/http", "elm/http" )
-        , ( "elm-lang/svg", "elm/svg" )
-        , ( "elm-lang/virtual-dom", "elm/virtual-dom" )
-        , ( "elm-tools/parser", "elm/parser" )
-        , ( "evancz/elm-markdown", "elm-explorations/markdown" )
-        , ( "evancz/url-parser", "elm/url" )
-        , ( "mgold/elm-random-pcg", "elm/random" )
-        , ( "ohanhi/keyboard-extra", "ohanhi/keyboard" )
-        , ( "thebritican/elm-autocomplete", "ContaSystemer/elm-menu" )
-        , ( "elm-community/linear-algebra", "elm-explorations/linear-algebra" )
-        , ( "elm-community/webgl", "elm-explorations/webgl" )
-        , ( "elm-lang/keyboard", "elm/browser" )
-        , ( "elm-lang/dom", "elm/browser" )
-        , ( "elm-lang/navigation", "elm/browser" )
-        , ( "elm-lang/window", "elm/browser" )
-        , ( "mpizenberg/elm-mouse-events", "mpizenberg/elm-pointer-events" )
-        , ( "mpizenberg/elm-touch-events", "mpizenberg/elm-pointer-events" )
-        , ( "ryannhg/elm-date-format", "ryannhg/date-format" )
-        , ( "rtfeldman/hex", "rtfeldman/elm-hex" )
-        , ( "elm-lang/mouse", "elm/browser" )
-        , ( "avh4/elm-transducers", "avh4-experimental/elm-transducers" )
-        , ( "dillonkearns/graphqelm", "dillonkearns/elm-graphql" )
-        , ( "mgold/elm-date-format", "ryannhg/date-format" )
-        , ( "justinmimbs/elm-date-extra", "justinmimbs/date" )
+        [ ( "NoRedInk/elm-decode-pipeline", [ "NoRedInk/elm-json-decode-pipeline" ] )
+        , ( "elm-community/elm-test", [ "elm-explorations/test" ] )
+        , ( "elm-lang/animation-frame", [ "elm/browser" ] )
+        , ( "elm-lang/core", [ "elm/core" ] )
+        , ( "elm-lang/html", [ "elm/html" ] )
+        , ( "elm-lang/http", [ "elm/http" ] )
+        , ( "elm-lang/svg", [ "elm/svg" ] )
+        , ( "elm-lang/virtual-dom", [ "elm/virtual-dom" ] )
+        , ( "elm-tools/parser", [ "elm/parser" ] )
+        , ( "evancz/elm-markdown", [ "elm-explorations/markdown" ] )
+        , ( "evancz/url-parser", [ "elm/url" ] )
+        , ( "mgold/elm-random-pcg", [ "elm/random" ] )
+        , ( "ohanhi/keyboard-extra", [ "ohanhi/keyboard" ] )
+        , ( "thebritican/elm-autocomplete", [ "ContaSystemer/elm-menu" ] )
+        , ( "elm-community/linear-algebra", [ "elm-explorations/linear-algebra" ] )
+        , ( "elm-community/webgl", [ "elm-explorations/webgl" ] )
+        , ( "elm-lang/keyboard", [ "elm/browser" ] )
+        , ( "elm-lang/dom", [ "elm/browser" ] )
+        , ( "elm-lang/navigation", [ "elm/browser" ] )
+        , ( "elm-lang/window", [ "elm/browser" ] )
+        , ( "mpizenberg/elm-mouse-events", [ "mpizenberg/elm-pointer-events" ] )
+        , ( "mpizenberg/elm-touch-events", [ "mpizenberg/elm-pointer-events" ] )
+        , ( "ryannhg/elm-date-format", [ "ryannhg/date-format" ] )
+        , ( "rtfeldman/hex", [ "rtfeldman/elm-hex" ] )
+        , ( "elm-lang/mouse", [ "elm/browser" ] )
+        , ( "avh4/elm-transducers", [ "avh4-experimental/elm-transducers" ] )
+        , ( "dillonkearns/graphqelm", [ "dillonkearns/elm-graphql" ] )
+        , ( "mgold/elm-date-format", [ "ryannhg/date-format" ] )
+        , ( "justinmimbs/elm-date-extra", [ "justinmimbs/date", "rtfeldman/elm-iso8601-date-strings", "ryannhg/date-format" ] )
         ]
 
 
@@ -364,18 +365,24 @@ viewDependency ( name, status ) =
                     }
                 ]
 
+        dependencyItem itemName =
+            Element.column []
+                [ Element.el [ Font.size 14, Font.bold ] <| Element.text itemName
+                , links itemName
+                ]
+
         dependency =
             case status of
-                ReplacedWith replacedName ->
+                ReplacedWith replacedNames ->
                     [ Element.el [ Font.size 10, Font.color <| Element.rgb 0.5 0.5 0.5 ] <| Element.text <| "(" ++ name ++ ")"
-                    , Element.el [ Font.size 14, Font.bold ] <| Element.text replacedName
-                    , links replacedName
+                    , Element.column [ Element.spacing 5 ]
+                        (List.map dependencyItem replacedNames
+                            |> List.intersperse (Element.el [] (Element.text "or"))
+                        )
                     ]
 
                 Ready ->
-                    [ Element.el [ Font.size 14, Font.bold ] <| Element.text name
-                    , links name
-                    ]
+                    [ dependencyItem name ]
 
                 NotReady ->
                     [ Element.link [ Font.size 14, Font.bold, Font.underline ] { url = "#" ++ name, label = Element.text name }
